@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>DeFi Dashboard (MVP)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; background:#0b0f19; color:#e6e8ee;}
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+    input { width: 520px; max-width: 100%; padding: 10px 12px; border-radius:10px; border:1px solid #2a3246; background:#0f1626; color:#e6e8ee;}
+    button { padding:10px 12px; border-radius:10px; border:1px solid #2a3246; background:#111a2e; color:#e6e8ee; cursor:pointer;}
+    button:hover { background:#162242; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(280px,1fr)); gap:12px; margin-top:16px;}
+    .card { background:#0f1626; border:1px solid #202a40; border-radius:14px; padding:14px; }
+    .h { font-size:14px; opacity:.8; margin:0 0 8px;}
+    .big { font-size:26px; font-weight:700; margin:0;}
+    table { width:100%; border-collapse:collapse; font-size:14px;}
+    td { padding:8px 0; border-bottom:1px solid #1c253a; }
+    td:last-child { text-align:right; }
+    .muted { opacity:.75; }
+    .err { color:#ff6b6b; }
+    .ok  { color:#7ee787; }
+    code { background:#0f1626; padding:2px 6px; border-radius:8px; border:1px solid #202a40;}
+  </style>
+</head>
+<body>
+  <h1 style="margin:0 0 8px;">DeFi Dashboard (MVP)</h1>
+  <p class="muted" style="margin:0 0 16px;">
+    Backend: <code id="apiLabel"></code>
+  </p>
+
+  <div class="row">
+    <input id="addr" placeholder="0x..." value="0xEd80D5A03e833D05BF190e116f22E5e447b8E39a" />
+    <button id="btn">Cargar</button>
+    <span id="status" class="muted"></span>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <p class="h">Total (USD)</p>
+      <p class="big" id="totalUsd">—</p>
+      <p class="muted" id="byType">—</p>
+    </div>
+
+    <div class="card">
+      <p class="h">Top Chains</p>
+      <div id="chains"></div>
+    </div>
+
+    <div class="card">
+      <p class="h">DeFi Total (USD)</p>
+      <p class="big" id="defiTotal">—</p>
+      <p class="muted" id="defiCount">—</p>
+    </div>
+
+    <div class="card">
+      <p class="h">Top Protocolos</p>
+      <div id="protocols"></div>
+    </div>
+
+    <div class="card" style="grid-column: 1 / -1;">
+      <p class="h">Top Posiciones DeFi</p>
+      <div id="positions"></div>
+    </div>
+  </div>
+
+<script>
+  const API = "http://207.148.30.220:8000";
+  document.getElementById("apiLabel").textContent = API;
+
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n) => (typeof n === "number" ? n.toLocaleString("en-US", {maximumFractionDigits: 2}) : "—");
+
+  function renderTable(rows, col1, col2) {
+    if (!rows || rows.length === 0) return "<div class='muted'>Sin datos</div>";
+    let html = "<table>";
+    for (const r of rows) {
+      html += `<tr><td>${r[col1]}</td><td>$${fmt(r[col2])}</td></tr>`;
+    }
+    html += "</table>";
+    return html;
+  }
+
+  async function load() {
+    const address = $("addr").value.trim();
+    if (!address.startsWith("0x") || address.length < 10) {
+      $("status").innerHTML = "<span class='err'>Dirección inválida</span>";
+      return;
+    }
+
+    $("status").innerHTML = "<span class='muted'>Cargando…</span>";
+
+    try {
+      // summary (1 llamada)
+      const s = await fetch(`${API}/summary?address=${encodeURIComponent(address)}`);
+      const summary = await s.json();
+      if (!s.ok) throw new Error(summary.detail || JSON.stringify(summary));
+
+      $("totalUsd").textContent = `$${fmt(summary.total_usd)}`;
+
+      const bt = summary.by_type || {};
+      $("byType").textContent =
+        `wallet: $${fmt(bt.wallet || 0)} | staked: $${fmt(bt.staked || 0)} | deposited: $${fmt(bt.deposited || 0)} | borrowed: $${fmt(bt.borrowed || 0)}`;
+
+      $("chains").innerHTML = renderTable(summary.top_chains, "key", "usd");
+
+      // defi_summary (1 llamada)
+      const d = await fetch(`${API}/defi_summary?address=${encodeURIComponent(address)}`);
+      const defi = await d.json();
+      if (!d.ok) throw new Error(defi.detail || JSON.stringify(defi));
+
+      $("defiTotal").textContent = `$${fmt(defi.total_defi_usd)}`;
+      $("defiCount").textContent = `${defi.count_positions || 0} posiciones`;
+
+      $("protocols").innerHTML = renderTable(defi.top_protocols, "key", "usd");
+      $("positions").innerHTML = renderTable(defi.top_positions, "name", "usd");
+
+      $("status").innerHTML = "<span class='ok'>Listo</span>";
+    } catch (e) {
+      $("status").innerHTML = `<span class='err'>Error: ${String(e.message || e)}</span>`;
+    }
+  }
+
+  $("btn").addEventListener("click", load);
+</script>
+</body>
+</html>
